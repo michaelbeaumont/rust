@@ -165,7 +165,9 @@ impl<'a, 'tcx, 'v> Visitor<'v> for EffectCheckVisitor<'a, 'tcx> {
                     self.require_unsafe(expr.span, "dereference of unsafe pointer")
                 }
             }
-            ast::ExprAssign(ref base, _) | ast::ExprAssignOp(_, ref base, _) => {
+            ast::ExprAssign(ref base, _) |
+            ast::ExprAssignOp(_, ref base, _) |
+            ast::ExprAssignPat(ref base, _) => {
                 self.check_str_index(&**base);
             }
             ast::ExprAddrOf(ast::MutMutable, ref base) => {

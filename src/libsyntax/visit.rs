@@ -805,7 +805,8 @@ pub fn walk_expr<'v, V: Visitor<'v>>(visitor: &mut V, expression: &'v Expr) {
                              expression.id)
         }
         ExprBlock(ref block) => visitor.visit_block(&**block),
-        ExprAssign(ref left_hand_expression, ref right_hand_expression) => {
+        ExprAssign(ref left_hand_expression, ref right_hand_expression) |
+        ExprAssignPat(ref left_hand_expression, ref right_hand_expression) => {
             visitor.visit_expr(&**right_hand_expression);
             visitor.visit_expr(&**left_hand_expression)
         }

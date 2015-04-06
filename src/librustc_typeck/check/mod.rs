@@ -3430,6 +3430,27 @@ fn check_expr_with_unifier<'a, 'tcx, F>(fcx: &FnCtxt<'a, 'tcx>,
                                                     lvalue_pref);
         fcx.write_ty(id, fcx.expr_ty(&**a));
       }
+      ast::ExprAssignPat(ref lhs, ref rhs) => {
+        check_expr_with_lvalue_pref(fcx, &**lhs, PreferMutLvalue);
+
+        let tcx = fcx.tcx();
+        if !ty::expr_contains_lvals(tcx, &**lhs) {
+            span_err!(tcx.sess, expr.span, E0070,
+                "illegal left-hand side expression");
+        }
+
+        let lhs_ty = fcx.expr_ty(&**lhs);
+        check_expr_coercable_to_type(fcx, &**rhs, lhs_ty);
+        let rhs_ty = fcx.expr_ty(&**rhs);
+
+        fcx.require_expr_have_sized_type(&**lhs, traits::AssignmentLhsSized);
+
+        if ty::type_is_error(lhs_ty) || ty::type_is_error(rhs_ty) {
+            fcx.write_error(id);
+        } else {
+            fcx.write_nil(id);
+        }
+      }
       ast::ExprAssign(ref lhs, ref rhs) => {
         check_expr_with_lvalue_pref(fcx, &**lhs, PreferMutLvalue);
 

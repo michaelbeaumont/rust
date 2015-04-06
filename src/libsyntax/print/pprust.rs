@@ -472,7 +472,7 @@ pub fn visibility_qualified(vis: ast::Visibility, s: &str) -> String {
 fn needs_parentheses(expr: &ast::Expr) -> bool {
     match expr.node {
         ast::ExprAssign(..) | ast::ExprBinary(..) |
-        ast::ExprClosure(..) |
+        ast::ExprClosure(..) | ast:: ExprAssignPat(..) |
         ast::ExprAssignOp(..) | ast::ExprCast(..) => true,
         _ => false,
     }
@@ -1831,7 +1831,8 @@ impl<'a> State<'a> {
                 try!(self.ibox(0));
                 try!(self.print_block(&**blk));
             }
-            ast::ExprAssign(ref lhs, ref rhs) => {
+            ast::ExprAssign(ref lhs, ref rhs) |
+            ast::ExprAssignPat(ref lhs, ref rhs) => {
                 try!(self.print_expr(&**lhs));
                 try!(space(&mut self.s));
                 try!(self.word_space("="));

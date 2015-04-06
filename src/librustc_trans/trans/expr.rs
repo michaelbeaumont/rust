@@ -1012,8 +1012,49 @@ fn trans_rvalue_stmt_unadjusted<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
         ast::ExprLoop(ref body, _) => {
             controlflow::trans_loop(bcx, expr, &**body)
         }
-        ast::ExprAssign(ref dst, ref src) => {
-            let src_datum = unpack_datum!(bcx, trans(bcx, &**src));
+        ast::ExprAssignPat(ref dst, ref src) => {
+            if ty::expr_is_lval(bcx.tcx(), dst) {
+                let src_datum = unpack_datum!(bcx, trans(bcx, &**src));
+                let dst_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, &**dst, "assign"));
+
+                if bcx.fcx.type_needs_drop(dst_datum.ty) {
+                    // If there are destructors involved, make sure we
+                    // are copying from an rvalue, since that cannot possible
+                    // alias an lvalue. We are concerned about code like:
+                    //
+                    //   a = a
+                    //
+                    // but also
+                    //
+                    //   a = a.b
+                    //
+                    // where e.g. a : Option<Foo> and a.b :
+                    // Option<Foo>. In that case, freeing `a` before the
+                    // assignment may also free `a.b`!
+                    //
+                    // We could avoid this intermediary with some analysis
+                    // to determine whether `dst` may possibly own `src`.
+                    debuginfo::set_source_location(bcx.fcx, expr.id, expr.span);
+                    let src_datum = unpack_datum!(
+                        bcx, src_datum.to_rvalue_datum(bcx, "ExprAssign"));
+                    bcx = glue::drop_ty(bcx,
+                                        dst_datum.val,
+                                        dst_datum.ty,
+                                        expr.debug_loc());
+                    src_datum.store_to(bcx, dst_datum.val)
+                } else {
+                    src_datum.store_to(bcx, dst_datum.val)
+                }
+            }
+            else {
+                let src_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, &**src, "assign_pat"));
+                store_irrefutable_pat(bcx, dst, src_datum.val)
+            }
+        }
+        //ast::ExprAssign(ref dst, ref src) => {
+        ast::ExprAssign(_, _) => {
+            panic!("ExprAssign not allowed!");
+            /*let src_datum = unpack_datum!(bcx, trans(bcx, &**src));
             let dst_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, &**dst, "assign"));
 
             if bcx.fcx.type_needs_drop(dst_datum.ty) {
@@ -1043,7 +1084,7 @@ fn trans_rvalue_stmt_unadjusted<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
                 src_datum.store_to(bcx, dst_datum.val)
             } else {
                 src_datum.store_to(bcx, dst_datum.val)
-            }
+            }*/
         }
         ast::ExprAssignOp(op, ref dst, ref src) => {
             trans_assign_op(bcx, expr, op, &**dst, &**src)
@@ -1059,6 +1100,168 @@ fn trans_rvalue_stmt_unadjusted<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
                         expr.node));
         }
     }
+}
+
+/// # Arguments
+/// - bcx: starting basic block context
+/// - pat: the irrefutable pattern being matched.
+/// - val: the value being matched -- must be an lvalue (by ref, with cleanup)
+fn store_irrefutable_pat<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
+                                    lpat: &ast::Expr,
+                                    src: ValueRef)//,
+                                    //cleanup_scope: cleanup::ScopeId)
+                                    -> Block<'blk, 'tcx>
+{
+    debug!("store_irrefutable_pat(bcx={}, pat={})",
+           bcx.to_str(),
+           lpat.repr(bcx.tcx()));
+
+    if bcx.sess().asm_comments() {
+        add_comment(bcx, &format!("store_irrefutable_pat(pat={})",
+                                 lpat.repr(bcx.tcx())));
+    }
+
+    let _indenter = indenter();
+
+    let _icx = push_ctxt("expr::store_irrefutable_pat");
+    let mut bcx = bcx;
+    let tcx = bcx.tcx();
+    //let ccx = bcx.ccx();
+    match lpat.node {
+        ast::ExprTup(ref elems) => {
+            let repr = adt::represent_node(bcx, lpat.id);
+            for (i, elem) in elems.iter().enumerate() {
+                let fldptr = adt::trans_field_ptr(bcx, &*repr, src, 0, i);
+                bcx = store_irrefutable_pat(bcx, &**elem, fldptr);
+            }
+        }
+        ast::ExprStruct(_, ref fields, _) => {
+            let tcx = bcx.tcx();
+            let pat_ty = node_id_type(bcx, lpat.id);
+            let pat_repr = adt::represent_type(bcx.ccx(), pat_ty);
+            with_field_tys(tcx, pat_ty, Some(lpat.id), |discr, field_tys| {
+                for f in fields {
+                    let ix = ty::field_idx_strict(tcx, f.ident.node.name, field_tys);
+                    let fldptr = adt::trans_field_ptr(bcx, &*pat_repr, src,
+                                                      discr, ix);
+                    bcx = store_irrefutable_pat(bcx, &*f.expr, fldptr);
+                }
+            })
+        }
+        _ => {
+            if ty::expr_is_lval(tcx, lpat) {
+                let dst_datum = unpack_datum!(bcx, trans_to_lvalue(bcx, &*lpat, "store_irrefutable_pat"));
+                let src_ty = node_id_type(bcx, lpat.id);
+                let src_datum = Datum::new(src, src_ty, Expr::LvalueExpr);
+                if bcx.fcx.type_needs_drop(dst_datum.ty) {
+                    // If there are destructors involved, make sure we
+                    // are copying from an rvalue, since that cannot possible
+                    // alias an lvalue. We are concerned about code like:
+                    //
+                    //   a = a
+                    //
+                    // but also
+                    //
+                    //   a = a.b
+                    //
+                    // where e.g. a : Option<Foo> and a.b :
+                    // Option<Foo>. In that case, freeing `a` before the
+                    // assignment may also free `a.b`!
+                    //
+                    // We could avoid this intermediary with some analysis
+                    // to determine whether `dst` may possibly own `src`.
+                    debuginfo::set_source_location(bcx.fcx, lpat.id, lpat.span);
+                    let src_datum = unpack_datum!(
+                        bcx, src_datum.to_rvalue_datum(bcx, "ExprAssignPat"));
+                    bcx = glue::drop_ty(bcx,
+                                        dst_datum.val,
+                                        dst_datum.ty,
+                                        lpat.debug_loc());
+                    src_datum.store_to(bcx, dst_datum.val);
+                } else {
+                    src_datum.store_to(bcx, dst_datum.val);
+                }
+            }
+            else {
+                panic!("Invalid left hand expr");
+            }
+        }
+        /*ast::PatEnum(_, ref sub_pats) => {
+            let opt_def = bcx.tcx().def_map.borrow().get(&pat.id).map(|d| d.full_def());
+            match opt_def {
+                Some(def::DefVariant(enum_id, var_id, _)) => {
+                    let repr = adt::represent_node(bcx, pat.id);
+                    let vinfo = ty::enum_variant_with_id(ccx.tcx(),
+                                                         enum_id,
+                                                         var_id);
+                    let args = extract_variant_args(bcx,
+                                                    &*repr,
+                                                    vinfo.disr_val,
+                                                    val);
+                    if let Some(ref sub_pat) = *sub_pats {
+                        for (i, &argval) in args.vals.iter().enumerate() {
+                            bcx = bind_irrefutable_pat(bcx, &*sub_pat[i],
+                                                       argval, cleanup_scope);
+                        }
+                    }
+                }
+                Some(def::DefStruct(..)) => {
+                    match *sub_pats {
+                        None => {
+                            // This is a unit-like struct. Nothing to do here.
+                        }
+                        Some(ref elems) => {
+                            // This is the tuple struct case.
+                            let repr = adt::represent_node(bcx, pat.id);
+                            for (i, elem) in elems.iter().enumerate() {
+                                let fldptr = adt::trans_field_ptr(bcx, &*repr,
+                                                                  val, 0, i);
+                                bcx = bind_irrefutable_pat(bcx, &**elem,
+                                                           fldptr, cleanup_scope);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Nothing to do here.
+                }
+            }
+        }
+        ast::PatBox(ref inner) => {
+            let llbox = Load(bcx, val);
+            bcx = bind_irrefutable_pat(bcx, &**inner, llbox, cleanup_scope);
+        }
+        ast::PatRegion(ref inner, _) => {
+            let loaded_val = Load(bcx, val);
+            bcx = bind_irrefutable_pat(bcx, &**inner, loaded_val, cleanup_scope);
+        }
+        ast::PatVec(ref before, ref slice, ref after) => {
+            let pat_ty = node_id_type(bcx, pat.id);
+            let mut extracted = extract_vec_elems(bcx, pat_ty, before.len(), after.len(), val);
+            match slice {
+                &Some(_) => {
+                    extracted.vals.insert(
+                        before.len(),
+                        bind_subslice_pat(bcx, pat.id, val, before.len(), after.len())
+                    );
+                }
+                &None => ()
+            }
+            bcx = before
+                .iter()
+                .chain(slice.iter())
+                .chain(after.iter())
+                .zip(extracted.vals.into_iter())
+                .fold(bcx, |bcx, (inner, elem)|
+                    bind_irrefutable_pat(bcx, &**inner, elem, cleanup_scope)
+                );
+        }
+        ast::PatMac(..) => {
+            bcx.sess().span_bug(pat.span, "unexpanded macro");
+        }
+        ast::PatWild(_) | ast::PatLit(_) | ast::PatRange(_, _) => ()*/
+    }
+    bcx
 }
 
 fn trans_rvalue_dps_unadjusted<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,

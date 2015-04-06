@@ -857,6 +857,8 @@ pub enum Expr_ {
     /// A block (`{ ... }`)
     ExprBlock(P<Block>),
 
+    /// An assignment with a pattern on the left hand side (`Some(a) = foo()`)
+    ExprAssignPat(P<Expr>, P<Expr>),
     /// An assignment (`a = foo()`)
     ExprAssign(P<Expr>, P<Expr>),
     /// An assignment with an operator

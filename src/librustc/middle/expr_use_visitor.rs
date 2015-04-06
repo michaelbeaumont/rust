@@ -391,6 +391,31 @@ impl<'d,'t,'tcx,TYPER:mc::Typer<'tcx>> ExprUseVisitor<'d,'t,'tcx,TYPER> {
         self.walk_expr(expr);
     }
 
+    fn mutate_subexprs(&mut self,
+                   assignment_expr: &ast::Expr,
+                   expr: &ast::Expr,
+                   mode: MutateMode) {
+        match expr.node {
+            ast::ExprTup(ref elems) => {
+                for elem in elems.iter() {
+                    self.mutate_subexprs(assignment_expr, elem, mode)
+                }
+            }
+            ast::ExprStruct(_, ref fields, _) => {
+                for field in fields.iter() {
+                    self.mutate_subexprs(assignment_expr, &*field.expr, mode)
+                }
+            }
+            _ => if ty::expr_is_lval(self.tcx(), expr) {
+                let cmt = return_if_err!(self.mc.cat_expr(expr));
+                self.delegate.mutate(assignment_expr.id, assignment_expr.span, cmt, mode);
+                self.walk_expr(expr);
+            } else {
+                self.tcx().sess.span_bug(expr.span, "Left hand side of ExprAssign contains illegal expression");
+            }
+        }
+    }
+
     fn borrow_expr(&mut self,
                    expr: &ast::Expr,
                    r: ty::Region,
@@ -572,6 +597,11 @@ impl<'d,'t,'tcx,TYPER:mc::Typer<'tcx>> ExprUseVisitor<'d,'t,'tcx,TYPER> {
                 if let Some(ref expr) = *opt_expr {
                     self.consume_expr(&**expr);
                 }
+            }
+
+            ast::ExprAssignPat(ref lhs, ref rhs) => {
+                self.mutate_subexprs(expr, &**lhs, JustWrite);
+                self.consume_expr(&**rhs);
             }
 
             ast::ExprAssign(ref lhs, ref rhs) => {

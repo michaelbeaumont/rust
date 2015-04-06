@@ -4729,6 +4729,19 @@ pub fn expr_is_lval(tcx: &ctxt, e: &ast::Expr) -> bool {
     }
 }
 
+pub fn expr_contains_lvals(tcx: &ctxt, e: &ast::Expr) -> bool {
+    match e.node {
+        ast::ExprTup(ref elems) => {
+            elems.iter().all(|elem| expr_contains_lvals(tcx, elem))
+        }
+        ast::ExprStruct(_, ref fields, _) => {
+            fields.iter().all(|field| expr_contains_lvals(tcx, &*field.expr))
+        }
+        _ => expr_is_lval(tcx, e)
+    }
+}
+
+
 /// We categorize expressions into three kinds.  The distinction between
 /// lvalue/rvalue is fundamental to the language.  The distinction between the
 /// two kinds of rvalues is an artifact of trans which reflects how we will
@@ -4855,6 +4868,7 @@ pub fn expr_kind(tcx: &ctxt, expr: &ast::Expr) -> ExprKind {
         ast::ExprRet(..) |
         ast::ExprWhile(..) |
         ast::ExprLoop(..) |
+        ast::ExprAssignPat(..) |
         ast::ExprAssign(..) |
         ast::ExprInlineAsm(..) |
         ast::ExprAssignOp(..) => {

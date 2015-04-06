@@ -602,6 +602,7 @@ fn check_expr<'a, 'tcx>(v: &mut CheckCrateVisitor<'a, 'tcx>,
 
         // Various other expressions.
         ast::ExprMethodCall(..) |
+        ast::ExprAssignPat(..) |
         ast::ExprAssign(..) |
         ast::ExprAssignOp(..) |
         ast::ExprInlineAsm(_) |

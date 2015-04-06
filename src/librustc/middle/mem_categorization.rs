@@ -562,7 +562,7 @@ impl<'t,'tcx,TYPER:Typer<'tcx>> MemCategorizationContext<'t,TYPER> {
             self.cat_expr(&**e)
           }
 
-          ast::ExprAddrOf(..) | ast::ExprCall(..) |
+          ast::ExprAddrOf(..) | ast::ExprCall(..) | ast::ExprAssignPat(..) |
           ast::ExprAssign(..) | ast::ExprAssignOp(..) |
           ast::ExprClosure(..) | ast::ExprRet(..) |
           ast::ExprUnary(..) | ast::ExprRange(..) |

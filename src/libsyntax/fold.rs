@@ -1236,6 +1236,9 @@ pub fn noop_fold_expr<T: Folder>(Expr {id, node, span}: Expr, folder: &mut T) ->
                             folder.fold_block(body))
             }
             ExprBlock(blk) => ExprBlock(folder.fold_block(blk)),
+            ExprAssignPat(el, er) => {
+                ExprAssignPat(folder.fold_expr(el), folder.fold_expr(er))
+            }
             ExprAssign(el, er) => {
                 ExprAssign(folder.fold_expr(el), folder.fold_expr(er))
             }

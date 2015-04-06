@@ -3566,6 +3566,7 @@ fn create_scope_map(cx: &CrateContext,
                 }
             }
 
+            ast::ExprAssignPat(ref sub_exp1, ref sub_exp2) |
             ast::ExprAssign(ref sub_exp1, ref sub_exp2) |
             ast::ExprRepeat(ref sub_exp1, ref sub_exp2) => {
                 walk_expr(cx, &**sub_exp1, scope_stack, scope_map);

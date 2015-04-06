@@ -358,6 +358,7 @@ impl<'a, 'tcx> CFGBuilder<'a, 'tcx> {
                 self.straightline(expr, pred, [elem, count].iter().map(|&e| &**e))
             }
 
+            ast::ExprAssignPat(ref l, ref r) |
             ast::ExprAssign(ref l, ref r) |
             ast::ExprAssignOp(_, ref l, ref r) => {
                 self.straightline(expr, pred, [r, l].iter().map(|&e| &**e))

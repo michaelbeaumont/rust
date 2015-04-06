@@ -504,7 +504,8 @@ fn visit_expr(ir: &mut IrMaps, expr: &Expr) {
       ast::ExprTup(..) | ast::ExprBinary(..) | ast::ExprAddrOf(..) |
       ast::ExprCast(..) | ast::ExprUnary(..) | ast::ExprBreak(_) |
       ast::ExprAgain(_) | ast::ExprLit(_) | ast::ExprRet(..) |
-      ast::ExprBlock(..) | ast::ExprAssign(..) | ast::ExprAssignOp(..) |
+      ast::ExprBlock(..) | ast::ExprAssignPat(..) |
+      ast::ExprAssign(..) | ast::ExprAssignOp(..) |
       ast::ExprMac(..) | ast::ExprStruct(..) | ast::ExprRepeat(..) |
       ast::ExprParen(..) | ast::ExprInlineAsm(..) | ast::ExprBox(..) |
       ast::ExprRange(..) => {
@@ -1102,6 +1103,14 @@ impl<'a, 'tcx> Liveness<'a, 'tcx> {
               }
           }
 
+          ast::ExprAssignPat(ref l, ref r) => {
+            // see comment on lvalues in
+            // propagate_through_lvalue_components()
+            let succ = self.write_lvalue(&**l, succ, ACC_WRITE);
+            let succ = self.propagate_through_lvalue_components(&**l, succ);
+            self.propagate_through_expr(&**r, succ)
+          }
+
           ast::ExprAssign(ref l, ref r) => {
             // see comment on lvalues in
             // propagate_through_lvalue_components()
@@ -1433,6 +1442,13 @@ fn check_arm(this: &mut Liveness, arm: &ast::Arm) {
 
 fn check_expr(this: &mut Liveness, expr: &Expr) {
     match expr.node {
+      ast::ExprAssignPat(ref l, ref r) => {
+        this.check_lvalue(&**l);
+        this.visit_expr(&**r);
+
+        visit::walk_expr(this, expr);
+      }
+
       ast::ExprAssign(ref l, ref r) => {
         this.check_lvalue(&**l);
         this.visit_expr(&**r);

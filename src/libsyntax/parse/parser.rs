@@ -21,7 +21,7 @@ use ast::{Crate, CrateConfig, Decl, DeclItem};
 use ast::{DeclLocal, DefaultBlock, DefaultReturn};
 use ast::{UnDeref, BiDiv, EMPTY_CTXT, EnumDef, ExplicitSelf};
 use ast::{Expr, Expr_, ExprAddrOf, ExprMatch, ExprAgain};
-use ast::{ExprAssign, ExprAssignOp, ExprBinary, ExprBlock, ExprBox};
+use ast::{ExprAssignPat, ExprAssignOp, ExprBinary, ExprBlock, ExprBox};
 use ast::{ExprBreak, ExprCall, ExprCast};
 use ast::{ExprField, ExprTupField, ExprClosure, ExprIf, ExprIfLet, ExprIndex};
 use ast::{ExprLit, ExprLoop, ExprMac, ExprRange};
@@ -2694,7 +2694,7 @@ impl<'a> Parser<'a> {
           token::Eq => {
               self.bump();
               let rhs = self.parse_expr_res(restrictions);
-              self.mk_expr(lhs.span.lo, rhs.span.hi, ExprAssign(lhs, rhs))
+              self.mk_expr(lhs.span.lo, rhs.span.hi, ExprAssignPat(lhs, rhs))
           }
           token::BinOpEq(op) => {
               self.bump();

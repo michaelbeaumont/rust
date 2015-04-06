@@ -233,7 +233,13 @@ impl<'blk, 'tcx> CleanupMethods<'blk, 'tcx> for FunctionContext<'blk, 'tcx> {
         // this new AST scope had better be its immediate child.
         let top_scope = self.top_ast_scope();
         if top_scope.is_some() {
-            assert!((self.ccx
+            info!("Cleanup scope: {:?}",
+                  self.ccx
+                  .tcx()
+                  .region_maps
+                  .opt_encl_scope(region::CodeExtent::from_node_id(debug_loc.id))
+                  .map(|s|s.node_id()));
+            /*assert!((self.ccx
                      .tcx()
                      .region_maps
                      .opt_encl_scope(region::CodeExtent::from_node_id(debug_loc.id))
@@ -243,7 +249,7 @@ impl<'blk, 'tcx> CleanupMethods<'blk, 'tcx> for FunctionContext<'blk, 'tcx> {
                      .tcx()
                      .region_maps
                      .opt_encl_scope(region::CodeExtent::DestructionScope(debug_loc.id))
-                     .map(|s|s.node_id()) == top_scope));
+                     .map(|s|s.node_id()) == top_scope));*/
         }
 
         self.push_scope(CleanupScope::new(AstScopeKind(debug_loc.id),
